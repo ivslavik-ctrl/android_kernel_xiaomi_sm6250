@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    runs-packages: ubuntu-22.04
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout Kernel Source
         uses: actions/checkout@v4
@@ -15,44 +15,49 @@ jobs:
           sudo apt update
           sudo apt install -y bc build-essential libelf-dev libssl-dev git bison flex ccache libncurses5-dev zip alt-utils
 
-      - name: Download Google Clang Compiler
-          run: |
-            mkdir clang
-            cd clang
-            wget -q https://googlesource.com
-            tar -xzf clang-r487747c.tar.gz
-            echo "$(pwd)/bin" >> $GITHUB_PATH
+      # Хмарне завантаження офіційного Android Clang без використання інтернет-посилань
+      - name: Setup Android Clang Compiler
+        uses: ndb796/setup-android-clang@v1
+        with:
+          clang-version: r487747c
 
-        - name: Setup Kernel Environment & Force Drivers
-          run: |
-            # Примусово вмикаємо драйвери Realtek та мережевий стек для AC1300 у defconfig
-            CONFIG_FILE="arch/arm64/configs/vendor/curtana_defconfig"
-            [ ! -f "$CONFIG_FILE" ] && CONFIG_FILE="arch/arm64/configs/miatoll_defconfig"
-            
-            echo "CONFIG_USB_OTG=y" >> $CONFIG_FILE
-            echo "CONFIG_USB_OTG_WAKELOCK=y" >> $CONFIG_FILE
-            echo "CONFIG_USB_DWC3=y" >> $CONFIG_FILE
-            echo "CONFIG_USB_DWC3_MSM=y" >> $CONFIG_FILE
-            echo "CONFIG_CFG80211=m" >> $CONFIG_FILE
-            echo "CONFIG_MAC80211=m" >> $CONFIG_FILE
-            echo "CONFIG_NL80211_TESTMODE=y" >> $CONFIG_FILE
+      - name: Setup Kernel Environment & Force Drivers
+        run: |
+          CONFIG_FILE="arch/arm64/configs/vendor/curtana_defconfig"
+          if [ ! -f "$CONFIG_FILE" ]; then
+            CONFIG_FILE="arch/arm64/configs/miatoll_defconfig"
+          fi
+          echo "CONFIG_USB_OTG=y" >> $CONFIG_FILE
+          echo "CONFIG_USB_OTG_WAKELOCK=y" >> $CONFIG_FILE
+          echo "CONFIG_USB_DWC3=y" >> $CONFIG_FILE
+          echo "CONFIG_USB_DWC3_MSM=y" >> $CONFIG_FILE
+          echo "CONFIG_CFG80211=m" >> $CONFIG_FILE
+          echo "CONFIG_MAC80211=m" >> $CONFIG_FILE
+          echo "CONFIG_NL80211_TESTMODE=y" >> $CONFIG_FILE
 
-        - name: Compile Kernel Image
-          run: |
-            export ARCH=arm64
-            export SUBARCH=arm64
-            make O=out vendor/curtana_defconfig || make O=out miatoll_defconfig
-            make -j$(nproc) O=out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu-
+      - name: Compile Kernel Image
+        run: |
+          export ARCH=arm64
+          export SUBARCH=arm64
+          make O=out vendor/curtana_defconfig || make O=out miatoll_defconfig
+          make -j$(nproc) O=out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu-
 
-        - name: Package with AnyKernel3
-          run: |
-            git clone --depth=1 https://github.com packaging
-            cp out/arch/arm64/boot/Image.gz packaging/
-            cd packaging
-            zip -r ../anykernel-NetHunter-Miatoll.zip ./*
+      # Хмарне завантаження оригінального AnyKernel3 від петроса без посилань
+      - name: Download AnyKernel3 Tool
+        uses: actions/checkout@v4
+        with:
+          repository: petros402/AnyKernel3
+          path: packaging
 
-        - name: Upload Finished Kernel Artifact
-          uses: actions/upload-artifact@v4
-          with:
-            name: NetHunter-Miatoll-Kernel
-            path: anykernel-NetHunter-Miatoll.zip
+      - name: Package Kernel Zip
+        run: |
+          cp out/arch/arm64/boot/Image.gz packaging/
+          cd packaging
+          zip -r ../anykernel-NetHunter-Miatoll.zip ./*
+
+      - name: Upload Finished Kernel Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NetHunter-Miatoll-Kernel
+          path: anykernel-NetHunter-Miatoll.zip
+
